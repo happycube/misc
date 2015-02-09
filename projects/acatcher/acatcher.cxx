@@ -38,20 +38,42 @@ using namespace std;
 int baseport = 4000;
 const int MAX = 16;
 
-const int BUFLEN = 1024;  // in bytes
-const int ABUFLEN = 1024; // in words
+const int BUFLEN = 64*1024;  // in bytes
+//const int ABUFLEN = 1024; // in words
 
 struct sockin {
 	int listener_fd, data_fd;
 	struct sockaddr_in serv_addr, cli_addr;
+	int id;
 
-	sockin() {
+	sockin(int _id = 0, int baseport = 5000) {
+		id = _id;
 		listener_fd = data_fd = -1;
 		bzero(&serv_addr, sizeof(serv_addr));
 		bzero(&cli_addr, sizeof(cli_addr));
+		
+		listener_fd = socket(AF_INET, SOCK_STREAM, 0);
+		if (listener_fd < 0) {
+			cerr << "Couldn't open a listener socket.  Weird.\n";
+			_exit(-1);	
+		}
+
+		serv_addr.sin_family = AF_INET;
+		serv_addr.sin_addr.s_addr = INADDR_ANY;
+		serv_addr.sin_port = htons(baseport + id);
+
+		if (bind(listener_fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr))) {
+			cerr << "ERROR: Couldn't bind to port #" << baseport + id << endl;
+			_exit(-1);	
+		}
+
+		listen(listener_fd, 1);
 	}
 	
-	void handle(unsigned char *data, int len, bool have_stdout) {
+	virtual void handle(unsigned char *data, int len, int listener) {
+	}
+	
+	virtual void newconn() {
 	}
 }; 
 
@@ -61,18 +83,18 @@ struct audio_sockin : public sockin {
 //	uint16_t buf[ABUFLEN];
 //	int bufsize;
 
-	audio_sockin() : sockin() {
+	audio_sockin(int _id) : sockin(_id, 4000) {
 		leftover = -1;
 		//bufsize = 0;
 	}
 	
-	void handle(unsigned char *data, int len, bool have_stdout) {
+	virtual void handle(unsigned char *data, int len, int listener) {
 		int new_leftover = -1;
 		if (len % 2) {
 			new_leftover = data[len - 1];
 			len--;
 		}
-		if (have_stdout) {
+		if (listener == id) {
 			if (leftover >= 0) {
 				write(1, &leftover, 1);
 				leftover = -1;
@@ -83,12 +105,33 @@ struct audio_sockin : public sockin {
 	}
 
 	// new connection: better not have an odd # output for audio!
-	void newconn() {
+	virtual void newconn() {
 		leftover = -1;
 	}
 };
 
-audio_sockin s[MAX];
+bool have_fd3 = false;
+
+struct image_sockin : public sockin {
+//	uint16_t buf[ABUFLEN];
+//	int bufsize;
+
+	image_sockin(int _id) : sockin(_id, 4100) {
+		//bufsize = 0;
+	}
+	
+	virtual void handle(unsigned char *data, int len, int listener) {
+		if (listener == id) {
+			if (have_fd3) write(3, data, len);
+		}
+	}
+
+	// new connection: better not have an odd # output for audio!
+	virtual void newconn() {
+	}
+};
+
+sockin *s[MAX];
 
 unsigned char buf[BUFLEN];
 
@@ -100,24 +143,13 @@ void sigcatch(int sig)
 	_exit(0);
 } 
 
-int main(void)
+bool setrawkbd()
 {
-	int main_rv = 0;
-	int cur_listener = 0;
-
-	// catch signals
-	if (((int)signal(SIGINT,sigcatch) < 0) ||
-	    ((int)signal(SIGQUIT,sigcatch) < 0) ||
-	    ((int)signal(SIGTERM,sigcatch) < 0)) {
-		cerr << "Couldn't set up signal catching.  huh?\n";
-		return(1);
-	}
-
 	// set keyboard to raw mode + unblocking 
 	struct termios newtermios;
 
 	if(tcgetattr(0, &oldtermios) < 0)
-		return(-1);
+		_exit(1);
 
 	newtermios = oldtermios;
 
@@ -133,36 +165,48 @@ int main(void)
 	newtermios.c_cc[VTIME] = 0;
 
 	if(tcsetattr(0, TCSAFLUSH, &newtermios) < 0)
-		return(-1);
+		_exit(1);
 						
 	int opts = fcntl(0, F_GETFL);
 	if (opts < 0) {
 		cerr << "HUH?  fcntl failed\n";
-		goto err_exit;
+		return false;
 	} 
 	if (fcntl(0, F_SETFL, opts | O_NONBLOCK) < 0) {
 		cerr << "HUH?  fcntl(F_SETFL) failed\n";
+		return false;
+	} 
+	return true;
+}
+
+int main(void)
+{
+	int main_rv = 0;
+	int cur_listener = 0;
+
+	int num_sockets = (MAX * 2);
+	sockin *s[num_sockets];
+
+	// check to see if we have a video socket
+	have_fd3 = (fcntl(3, F_GETFD) >= 0);
+	if (have_fd3) cerr << "Have video output socket\n";
+
+	// catch signals
+	if (((int)signal(SIGINT,sigcatch) < 0) ||
+	    ((int)signal(SIGQUIT,sigcatch) < 0) ||
+	    ((int)signal(SIGTERM,sigcatch) < 0)) {
+		cerr << "Couldn't set up signal catching.  huh?\n";
+		return(1);
+	}
+
+	if (!setrawkbd()) {
 		goto err_exit;
 	} 
 
 	// init listening sockets
-	for (int i = 0; i < MAX; i++) {
-		s[i].listener_fd = socket(AF_INET, SOCK_STREAM, 0);
-		if (s[i].listener_fd < 0) {
-			cerr << "Couldn't open a listener socket.  Weird.\n";
-			goto err_exit;
-		}
-
-		s[i].serv_addr.sin_family = AF_INET;
-		s[i].serv_addr.sin_addr.s_addr = INADDR_ANY;
-		s[i].serv_addr.sin_port = htons(baseport + i);
-
-		if (bind(s[i].listener_fd, (struct sockaddr *)&s[i].serv_addr, sizeof(s[i].serv_addr))) {
-			cerr << "ERROR: Couldn't bind to port #" << baseport + i << endl;
-			goto err_exit;
-		}
-
-		listen(s[i].listener_fd, 1);
+	for (int i = 0; i < num_sockets; i+=2) {
+		s[i] = new audio_sockin(i / 2);
+		s[i+1] = new image_sockin(i / 2);
 	}
 
 	// now listen for connections and data
@@ -182,14 +226,14 @@ int main(void)
 
 		FD_SET(0, &readfds);
 
-		for (int i = 0; i < MAX; i++) {
-			if (s[i].listener_fd >= 0) {
-				FD_SET(s[i].listener_fd, &readfds);	
-				if (s[i].listener_fd >= topfd) topfd = s[i].listener_fd + 1; 
+		for (int i = 0; i < num_sockets; i++) {
+			if (s[i]->listener_fd >= 0) {
+				FD_SET(s[i]->listener_fd, &readfds);	
+				if (s[i]->listener_fd >= topfd) topfd = s[i]->listener_fd + 1; 
 			}
-			if (s[i].data_fd >= 0) {
-				FD_SET(s[i].data_fd, &readfds);	
-				if (s[i].data_fd >= topfd) topfd = s[i].data_fd + 1; 
+			if (s[i]->data_fd >= 0) {
+				FD_SET(s[i]->data_fd, &readfds);	
+				if (s[i]->data_fd >= topfd) topfd = s[i]->data_fd + 1; 
 			}
 		}
 
@@ -226,13 +270,15 @@ int main(void)
 			}
 		}
 
-		for (int i = 0; (rv > 0) && (i < MAX); i++) {
+		for (int i = 0; (rv > 0) && (i < num_sockets); i++) {
+			if (!s[i]) break;
+
 			// check for new connections
-			if (FD_ISSET(s[i].listener_fd, &readfds)) {
+			if (FD_ISSET(s[i]->listener_fd, &readfds)) {
 				socklen_t len = sizeof(struct sockaddr);
-				int newfd = accept(s[i].listener_fd, (struct sockaddr *)&s[i].cli_addr, &len);
+				int newfd = accept(s[i]->listener_fd, (struct sockaddr *)&s[i]->cli_addr, &len);
 				if (newfd >= 0) {
-					if (s[i].data_fd < 0) {
+					if (s[i]->data_fd < 0) {
 						int opts = fcntl(newfd, F_GETFL);
 
 						if (opts < 0) {
@@ -245,9 +291,9 @@ int main(void)
 							goto err_exit;
 						} 
 
-						s[i].data_fd = newfd;
-						cerr << "New connection on " << i << "\r\n";
-						s[i].newconn();
+						s[i]->data_fd = newfd;
+						cerr << "New connection on " << i/2 << " " << ((i % 2) ? "video" : "audio") << "\r\n";
+						s[i]->newconn();
 					} else {
 						cerr << "HUH?  new connection on socket # " << i << endl;
 					} 
@@ -255,16 +301,15 @@ int main(void)
 			}
 
 			// check for new data
-			if (FD_ISSET(s[i].data_fd, &readfds)) {
-				int rv = read(s[i].data_fd, buf, BUFLEN);
+			if (FD_ISSET(s[i]->data_fd, &readfds)) {
+				int rv = read(s[i]->data_fd, buf, BUFLEN);
 
 				if (rv == 0) { 
-					close(s[i].data_fd);	
-					s[i].data_fd = -1;
-					listen(s[i].listener_fd, 1);
+					close(s[i]->data_fd);	
+					s[i]->data_fd = -1;
+					listen(s[i]->listener_fd, 1);
 				} else {
-					s[i].handle(buf, rv, (i == cur_listener));
-//					rv = write(1, buf, rv);
+					s[i]->handle(buf, rv, cur_listener);
 				}
 			}
 		}

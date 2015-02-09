@@ -1,0 +1,7 @@
+
+
+webcam side:
+loop these in two seperate screen/byobu screens:
+arecord -t raw -c 1 -f S16_LE -r 22050 -D hw:1 | nc 192.168.1.122 4000
+v4lcap -o | nc 192.168.1.122 4101
+
