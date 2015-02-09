@@ -67,6 +67,11 @@ struct audio_sockin : public sockin {
 	}
 	
 	void handle(unsigned char *data, int len, bool have_stdout) {
+		int new_leftover = -1;
+		if (len % 2) {
+			new_leftover = data[len - 1];
+			len--;
+		}
 		if (have_stdout) {
 			if (leftover >= 0) {
 				write(1, &leftover, 1);
@@ -74,6 +79,7 @@ struct audio_sockin : public sockin {
 			}
 			write(1, data, len);
 		}
+		leftover = new_leftover;
 	}
 
 	// new connection: better not have an odd # output for audio!
