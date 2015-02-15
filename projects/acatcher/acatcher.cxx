@@ -138,8 +138,8 @@ struct image_sockin : public sockin {
 //			cerr << "x " << imgMat.rows << ' ' << imgMat.cols << "\r\n";
 
 			imshow("Display Window", imgMat);
-			cerr << "updated\r\n";
-			waitKey(2);
+//			cerr << "updated\r\n";
+			waitKey(1);
 		}
 	} 
 	
