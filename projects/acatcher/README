@@ -1,7 +1,22 @@
 
+host side:
+
+apt-get install python-opencv python-numpy
+clang++ -o acatcher acatcher.cxx
+
+---
+mkfifo images
+cat images | python rpi_stream.py
+./acatcher 3> images | aplay -t raw -c 1 -f S16_LE -r 22050
+---
 
 webcam side:
-loop these in two seperate screen/byobu screens:
-arecord -t raw -c 1 -f S16_LE -r 22050 -D hw:1 | nc 192.168.1.122 4000
-v4lcap -o | nc 192.168.1.122 4101
+
+xx = session #
+
+# different res is ok, MUST be mjpg
+v4l2-ctl --set-fmt-video=width=320,height=240,pixelformat=MJPG
+
+(while true; do arecord -t raw -c 1 -f S16_LE -r 22050 -D hw:1 | nc 192.168.1.122 40xx; sleep 1; done) &
+while true; do v4lcap -o | nc 192.168.1.122 41xx; sleep 1; done
 

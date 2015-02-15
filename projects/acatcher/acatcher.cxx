@@ -41,6 +41,9 @@ const int MAX = 16;
 const int BUFLEN = 64*1024;  // in bytes
 //const int ABUFLEN = 1024; // in words
 
+// Yes this is ugly.  :P
+bool failure = false;
+
 struct sockin {
 	int listener_fd, data_fd;
 	struct sockaddr_in serv_addr, cli_addr;
@@ -55,7 +58,8 @@ struct sockin {
 		listener_fd = socket(AF_INET, SOCK_STREAM, 0);
 		if (listener_fd < 0) {
 			cerr << "Couldn't open a listener socket.  Weird.\n";
-			_exit(-1);	
+			failure = true;
+			return;
 		}
 
 		serv_addr.sin_family = AF_INET;
@@ -64,7 +68,8 @@ struct sockin {
 
 		if (bind(listener_fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr))) {
 			cerr << "ERROR: Couldn't bind to port #" << baseport + id << endl;
-			_exit(-1);	
+			failure = true;
+			return;
 		}
 
 		listen(listener_fd, 1);
@@ -202,12 +207,19 @@ int main(void)
 	if (!setrawkbd()) {
 		goto err_exit;
 	} 
+	
+	for (int i = 0; i < num_sockets; i+=2) {
+		s[i] = NULL;
+	}
 
 	// init listening sockets
 	for (int i = 0; i < num_sockets; i+=2) {
 		s[i] = new audio_sockin(i / 2);
 		s[i+1] = new image_sockin(i / 2);
 	}
+	
+	if (failure) 		
+		goto err_exit;
 
 	// now listen for connections and data
 	while (1) {
@@ -317,12 +329,20 @@ int main(void)
 
 
 	err_exit:
-		tcsetattr(0, TCSAFLUSH, &oldtermios);
-		return(1);
+		main_rv = 1;
 
 	good_exit:
 		tcsetattr(0, TCSAFLUSH, &oldtermios);
-		return(0);
+		for (int i = 0; i < num_sockets; i++) {
+			if (s[i] && s[i]->listener_fd >= 0) {
+				close(s[i]->listener_fd);
+			}
+			if (s[i] && s[i]->data_fd >= 0) {
+				close(s[i]->data_fd);
+			}
+		}
+
+		return main_rv;
 }
 
 

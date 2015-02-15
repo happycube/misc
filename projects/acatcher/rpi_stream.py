@@ -1,7 +1,6 @@
 # adapted from http://petrkout.com/electronics/low-latency-0-4-s-video-streaming-from-raspberry-pi-mjpeg-streamer-opencv/
 
 import cv2
-import urllib
 import numpy as np
 import sys
 
