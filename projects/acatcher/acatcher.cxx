@@ -33,12 +33,16 @@ THE SOFTWARE.
 #include <fcntl.h>
 #include <termios.h>
 
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
+
+using namespace cv;
 using namespace std;
 
 int baseport = 4000;
 const int MAX = 16;
 
-const int BUFLEN = 64*1024;  // in bytes
+const int BUFLEN = 1024*1024;  // in bytes
 //const int ABUFLEN = 1024; // in words
 
 // Yes this is ugly.  :P
@@ -115,24 +119,67 @@ struct audio_sockin : public sockin {
 	}
 };
 
-bool have_fd3 = false;
+const int IBUFLEN = 2048*1024;  // in bytes
 
 struct image_sockin : public sockin {
-//	uint16_t buf[ABUFLEN];
-//	int bufsize;
+	uint8_t buf[IBUFLEN];
+	int bufsize;
 
 	image_sockin(int _id) : sockin(_id, 4100) {
-		//bufsize = 0;
-	}
-	
-	virtual void handle(unsigned char *data, int len, int listener) {
-		if (listener == id) {
-			if (have_fd3) write(3, data, len);
-		}
+		bufsize = 0;
 	}
 
-	// new connection: better not have an odd # output for audio!
+	void showImage(int begin, int end, int listener) {
+		if (listener == id) {
+			Mat imgbuf = cv::Mat(480, 640, CV_8U, &buf[begin]);
+			Mat imgMat = cv::imdecode(imgbuf, CV_LOAD_IMAGE_COLOR);
+
+			if (!imgMat.data) cerr << "reading failed\r\n";
+//			cerr << "x " << imgMat.rows << ' ' << imgMat.cols << "\r\n";
+
+			imshow("Display Window", imgMat);
+			cerr << "updated\r\n";
+			waitKey(2);
+		}
+	} 
+	
+	virtual void handle(unsigned char *data, int len, int listener) {
+		int begin = -1, end = -1;
+
+		if ((len + bufsize) > IBUFLEN) {
+			bufsize = 0;
+		} 
+
+		memcpy(&buf[bufsize], data, len);
+		bufsize += len;
+
+		for (int i = 0; ((begin == -1) || (end == -1)) && (i < bufsize - 1); i++) {
+	//		if (buf[i] == 0xff) cerr << i << ' ' << (int)buf[i + 1] << "\r\n";
+			if ((buf[i] == 0xff) && (buf[i + 1] == 0xd8)) begin = i;
+			if ((buf[i] == 0xff) && (buf[i + 1] == 0xd9)) end = i;
+		}
+
+//		cerr << "A " << bufsize << ' ' << begin << ' ' << end << "\r\n";
+
+		if ((begin >= 0) && (end >= 0)) {
+			if (begin > end) {
+				memmove(buf, &buf[begin], bufsize - begin);
+				bufsize -= begin;  
+			} else {
+//				cerr << "doshow\r\n";
+				showImage(begin, end, listener);
+				bufsize = 0;
+			}
+		}
+
+
+//		if (listener == id) {
+//			if (have_fd3) write(3, data, len);
+//		}
+	}
+
 	virtual void newconn() {
+		bufsize = 0;
 	}
 };
 
@@ -192,9 +239,13 @@ int main(void)
 	int num_sockets = (MAX * 2);
 	sockin *s[num_sockets];
 
+#if 0
 	// check to see if we have a video socket
 	have_fd3 = (fcntl(3, F_GETFD) >= 0);
 	if (have_fd3) cerr << "Have video output socket\n";
+#endif
+//	namedWindow("Display Window", WINDOW_AUTOSIZE );
+	namedWindow("Display Window", WINDOW_AUTOSIZE );
 
 	// catch signals
 	if (((int)signal(SIGINT,sigcatch) < 0) ||
@@ -249,6 +300,7 @@ int main(void)
 			}
 		}
 
+		waitKey(1);
 		rv = pselect(topfd, &readfds, &writefds, &exceptfds, &t, NULL);
 		if (rv == -1 && errno != EINTR) { 
 			cerr << "ERROR: select failed\n";

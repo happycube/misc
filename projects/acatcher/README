@@ -1,13 +1,10 @@
 
 host side:
 
-apt-get install python-opencv python-numpy
-clang++ -o acatcher acatcher.cxx
+apt-get install libopencv-dev
+clang++ -O2 -lopencv_core -lopencv_highgui -lopencv_imgproc -o acatcher acatcher.cxx
 
----
-mkfifo images
-cat images | python rpi_stream.py
-./acatcher 3> images | aplay -t raw -c 1 -f S16_LE -r 22050
+./acatcher | aplay -t raw -c 1 -f S16_LE -r 22050
 ---
 
 webcam side:
