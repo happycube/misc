@@ -39,6 +39,30 @@ THE SOFTWARE.
 using namespace cv;
 using namespace std;
 
+const char *names[] = {
+	"0",
+	"1",
+	"2",
+	"3",
+	"4",
+	"5",
+	"6",
+	"7",
+	"8",
+	"9",
+	"A",
+	"B",
+	"C",
+	"D",
+	"E",
+	"F",
+};
+
+void cls()
+{
+	cerr << "\x1B[2J\x1B[H";
+}
+
 int baseport = 4000;
 const int MAX = 16;
 
@@ -275,6 +299,8 @@ int main(void)
 	
 	if (failure) 		
 		goto err_exit;
+					
+	cls();
 
 	// now listen for connections and data
 	while (1) {
@@ -333,7 +359,8 @@ int main(void)
 					cur_listener = c + 10 - 'A';
 				}
 				if (old_listener != cur_listener) {
-					cerr << "Now listening to #" << cur_listener << "\r\n";
+					cls();
+					cerr << "Now listening to " << names[cur_listener] << "\r\n";
 				}
 			}
 		}

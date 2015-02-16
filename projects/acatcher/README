@@ -4,15 +4,21 @@ host side:
 apt-get install libopencv-dev
 clang++ -O2 -lopencv_core -lopencv_highgui -lopencv_imgproc -o acatcher acatcher.cxx
 
-./acatcher | aplay -t raw -c 1 -f S16_LE -r 22050
+to actually run it:
+./acatcher | (aplay -t raw -c 1 -f S16_LE -r 22050 > /dev/null 2> /dev/null)
 ---
 
 webcam side:
 
+copy v4lcap.c and build it on the rpi
+
 xx = session #
 
+make the following into a script
+---
+
 # different res is ok, MUST be mjpg
-v4l2-ctl --set-fmt-video=width=320,height=240,pixelformat=MJPG
+v4l2-ctl --set-fmt-video=width=640,height=480,pixelformat=MJPG
 
 (while true; do arecord -t raw -c 1 -f S16_LE -r 22050 -D hw:1 | nc 192.168.1.122 40xx; sleep 1; done) &
 while true; do v4lcap -o | nc 192.168.1.122 41xx; sleep 1; done
