@@ -54,6 +54,8 @@ struct sockin {
 	int id;
 
 	sockin(int _id = 0, int baseport = 5000) {
+		int option = 1;
+
 		id = _id;
 		listener_fd = data_fd = -1;
 		bzero(&serv_addr, sizeof(serv_addr));
@@ -65,6 +67,8 @@ struct sockin {
 			failure = true;
 			return;
 		}
+
+		setsockopt(listener_fd,SOL_SOCKET,(SO_REUSEPORT | SO_REUSEADDR),(char*)&option,sizeof(option));
 
 		serv_addr.sin_family = AF_INET;
 		serv_addr.sin_addr.s_addr = INADDR_ANY;
@@ -317,7 +321,7 @@ int main(void)
 			if (rv == 1) {
 				int old_listener = cur_listener;
 
-				cerr << "Got char " << (int)c << "\r\n"; 
+//				cerr << "Got char " << (int)c << "\r\n"; 
 				if (c == 'q') goto good_exit;
 				if ((c >= '0') && (c <= '9')) {
 					cur_listener = c - '0';
@@ -385,6 +389,23 @@ int main(void)
 
 	good_exit:
 		tcsetattr(0, TCSAFLUSH, &oldtermios);
+
+		int sdcount = 0;
+		for (int i = 0; i < num_sockets; i++) {
+			if (s[i] && s[i]->listener_fd >= 0) {
+				shutdown(s[i]->listener_fd, SHUT_RDWR);
+				sdcount++;
+			}
+			if (s[i] && s[i]->data_fd >= 0) {
+				shutdown(s[i]->data_fd, SHUT_RDWR);
+				sdcount++;
+			}
+		}
+	
+		if (sdcount) {	
+			cerr << "sent " << sdcount << " shutdowns\n";
+		}
+
 		for (int i = 0; i < num_sockets; i++) {
 			if (s[i] && s[i]->listener_fd >= 0) {
 				close(s[i]->listener_fd);
