@@ -156,6 +156,8 @@ struct audio_sockin : public sockin {
 
 const int IBUFLEN = 2048*1024;  // in bytes
 
+bool displayed = false;
+
 struct image_sockin : public sockin {
 	uint8_t buf[IBUFLEN];
 	int bufsize;
@@ -174,7 +176,7 @@ struct image_sockin : public sockin {
 
 			imshow(showall ? names[id] : "Display Window", imgMat);
 //			cerr << "updated\r\n";
-			waitKey(1);
+			displayed = true;
 		}
 	} 
 	
@@ -376,6 +378,7 @@ int main(void)
 			}
 		}
 
+		displayed = false;
 		for (int i = 0; (rv > 0) && (i < num_sockets); i++) {
 			if (!s[i]) break;
 
@@ -419,6 +422,7 @@ int main(void)
 				}
 			}
 		}
+		if (displayed) waitKey(1);
 	};
 
 
