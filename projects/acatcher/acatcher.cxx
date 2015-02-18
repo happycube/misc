@@ -39,6 +39,8 @@ THE SOFTWARE.
 using namespace cv;
 using namespace std;
 
+const int MAX = 16;
+
 const char *names[] = {
 	"0",
 	"1",
@@ -64,13 +66,18 @@ void cls()
 }
 
 int baseport = 4000;
-const int MAX = 16;
 
 const int BUFLEN = 1024*1024;  // in bytes
 //const int ABUFLEN = 1024; // in words
 
 // Yes this is ugly.  :P
 bool failure = false;
+
+#ifdef SHOWALL
+	bool showall = true;
+#else
+	bool showall = false;
+#endif
 
 struct sockin {
 	int listener_fd, data_fd;
@@ -158,14 +165,14 @@ struct image_sockin : public sockin {
 	}
 
 	void showImage(int begin, int end, int listener) {
-		if (listener == id) {
+		if (showall || (listener == id)) {
 			Mat imgbuf = cv::Mat(480, 640, CV_8U, &buf[begin]);
 			Mat imgMat = cv::imdecode(imgbuf, CV_LOAD_IMAGE_COLOR);
 
 			if (!imgMat.data) cerr << "reading failed\r\n";
 //			cerr << "x " << imgMat.rows << ' ' << imgMat.cols << "\r\n";
 
-			imshow("Display Window", imgMat);
+			imshow(showall ? names[id] : "Display Window", imgMat);
 //			cerr << "updated\r\n";
 			waitKey(1);
 		}
@@ -201,9 +208,6 @@ struct image_sockin : public sockin {
 		}
 
 
-//		if (listener == id) {
-//			if (have_fd3) write(3, data, len);
-//		}
 	}
 
 	virtual void newconn() {
@@ -273,7 +277,14 @@ int main(void)
 	if (have_fd3) cerr << "Have video output socket\n";
 #endif
 //	namedWindow("Display Window", WINDOW_AUTOSIZE );
-	namedWindow("Display Window", WINDOW_AUTOSIZE );
+
+	if (showall) {
+		for (int i = 0; i < MAX; i++) {
+			namedWindow(names[i], WINDOW_AUTOSIZE );
+		}
+	} else {
+		namedWindow("Display Window", WINDOW_AUTOSIZE );
+	}
 
 	// catch signals
 	if (((int)signal(SIGINT,sigcatch) < 0) ||
