@@ -73,11 +73,8 @@ const int BUFLEN = 1024*1024;  // in bytes
 // Yes this is ugly.  :P
 bool failure = false;
 
-#ifdef SHOWALL
-	bool showall = true;
-#else
-	bool showall = false;
-#endif
+bool f_showall = false;
+bool f_saveaudio = false;
 
 struct sockin {
 	int listener_fd, data_fd;
@@ -123,6 +120,7 @@ struct sockin {
 
 struct audio_sockin : public sockin {
 	int leftover;
+	int a_fd;
 
 //	uint16_t buf[ABUFLEN];
 //	int bufsize;
@@ -130,6 +128,12 @@ struct audio_sockin : public sockin {
 	audio_sockin(int _id) : sockin(_id, 4000) {
 		leftover = -1;
 		//bufsize = 0;
+
+		a_fd = -1;
+
+		if (f_saveaudio) {
+			a_fd = open(names[id], O_WRONLY | O_APPEND | O_CREAT, S_IRWXU | S_IROTH);
+		}
 	}
 	
 	virtual void handle(unsigned char *data, int len, int listener) {
@@ -138,13 +142,14 @@ struct audio_sockin : public sockin {
 			new_leftover = data[len - 1];
 			len--;
 		}
-		if (listener == id) {
-			if (leftover >= 0) {
-				write(1, &leftover, 1);
-				leftover = -1;
-			}
-			write(1, data, len);
+
+		if (leftover >= 0) {
+			if (a_fd >= 2) write(a_fd, &leftover, 1);
+			if (listener == id) write(1, &leftover, 1);
+			leftover = -1;
 		}
+		if (a_fd >= 2) write(a_fd, data, len);
+		if (listener == id) write(1, data, len);
 		leftover = new_leftover;
 	}
 
@@ -167,14 +172,14 @@ struct image_sockin : public sockin {
 	}
 
 	void showImage(int begin, int end, int listener) {
-		if (showall || (listener == id)) {
+		if (f_showall || (listener == id)) {
 			Mat imgbuf = cv::Mat(480, 640, CV_8U, &buf[begin]);
 			Mat imgMat = cv::imdecode(imgbuf, CV_LOAD_IMAGE_COLOR);
 
 			if (!imgMat.data) cerr << "reading failed\r\n";
 //			cerr << "x " << imgMat.rows << ' ' << imgMat.cols << "\r\n";
 
-			imshow(showall ? names[id] : "Display Window", imgMat);
+			imshow(f_showall ? names[id] : "Display Window", imgMat);
 //			cerr << "updated\r\n";
 			displayed = true;
 		}
@@ -265,7 +270,7 @@ bool setrawkbd()
 	return true;
 }
 
-int main(void)
+int main(int argc, char *argv[])
 {
 	int main_rv = 0;
 	int cur_listener = 0;
@@ -273,14 +278,22 @@ int main(void)
 	int num_sockets = (MAX * 2);
 	sockin *s[num_sockets];
 
-#if 0
-	// check to see if we have a video socket
-	have_fd3 = (fcntl(3, F_GETFD) >= 0);
-	if (have_fd3) cerr << "Have video output socket\n";
-#endif
-//	namedWindow("Display Window", WINDOW_AUTOSIZE );
+        opterr = 0;
 
-	if (showall) {
+	int c;
+
+        while ((c = getopt(argc, argv, "as")) != -1) {
+		switch (c) {
+			case 's':
+				f_saveaudio = true;
+				break;
+			case 'a':
+				f_showall = true;
+				break;
+		};
+	}
+
+	if (f_showall) {
 		for (int i = 0; i < MAX; i++) {
 			namedWindow(names[i], WINDOW_AUTOSIZE );
 		}
