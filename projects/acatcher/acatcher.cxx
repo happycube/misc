@@ -138,6 +138,9 @@ struct audio_sockin : public sockin {
 	
 	virtual void handle(unsigned char *data, int len, int listener) {
 		int new_leftover = -1;
+
+		if (len < 0) return;
+
 		if (len % 2) {
 			new_leftover = data[len - 1];
 			len--;
@@ -384,6 +387,9 @@ int main(int argc, char *argv[])
 				if ((c >= 'A') && (c <= 'F')) {
 					cur_listener = c + 10 - 'A';
 				}
+
+				if (cur_listener >= MAX) cur_listener = old_listener;
+
 				if (old_listener != cur_listener) {
 					cls();
 					cerr << "Now listening to " << names[cur_listener] << "\r\n";
